@@ -198,10 +198,10 @@ success "SSH service restarted"
 log "Setup completed successfully!"
 echo
 success "=== SECURITY SETUP SUMMARY ==="
-echo "✓ System packages updated"
-echo "✓ UFW firewall enabled (SSH allowed, all other incoming denied)"
-echo "✓ SSH hardened (pubkey auth only, PAM disabled, root prohibit-password)"
-echo "✓ Fail2Ban installed and configured for SSH protection"
+echo "[OK] System packages updated"
+echo "[OK] UFW firewall enabled (SSH allowed, all other incoming denied)"
+echo "[OK] SSH hardened (pubkey auth only, PAM disabled, root prohibit-password)"
+echo "[OK] Fail2Ban installed and configured for SSH protection"
 echo
 
 warning "=== IMPORTANT NOTES ==="
