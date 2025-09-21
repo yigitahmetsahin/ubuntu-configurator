@@ -209,7 +209,6 @@ network_config_flow() {
     {
         echo "network:"
         echo "    version: 2"
-        echo "    renderer: networkd"
         echo "    ethernets:"
         echo "        ${TARGET_IFACE}:"
         if [[ "$DHCP4" == "yes" ]]; then
