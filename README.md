@@ -3,9 +3,10 @@
 This directory contains `ubuntu_server_setup.sh`, an interactive CLI script to perform initial setup and security hardening on a fresh Ubuntu server.
 
 ### What it does
-- **Operation modes**: Choose between `initial-setup` or `network-config`
+- **Operation modes**: Choose between `initial-setup`, `network-config`, or `firewall-config`
   - **initial-setup**: Security hardening and role-based firewall
   - **network-config**: Interactive netplan configuration for an interface (DHCP or static)
+  - **firewall-config**: Only configure/reset UFW based on selected role (no SSH/netplan changes)
 - **Updates system packages**: `apt update && apt upgrade`
 - **Configures UFW firewall**: resets rules, denies incoming and allows outgoing by default, always allows `ssh`, then opens extra ports based on your selected role
 - **Hardens SSH**: disables password authentication, restricts root login, reduces auth retries, disables X11 forwarding, and more
@@ -37,7 +38,7 @@ sudo ./ubuntu_server_setup.sh
 
 ### Interactive flow
 You will be prompted for:
-- **Operation mode**: `initial-setup` or `network-config`
+- **Operation mode**: `initial-setup`, `network-config`, or `firewall-config`
   - If `initial-setup`:
     - **Install Fail2Ban (y/N)?**
     - **Select setup type**: one of `redis`, `mariadb`, `api`, `ui-app`, `vpn`, `deployinator`
@@ -46,15 +47,17 @@ You will be prompted for:
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static
     - If static: provide `address (CIDR)`, `gateway4`, optional `DNS servers`
     - **Optional (Y/n)**: mark interface as optional to skip boot wait
+  - If `firewall-config`:
+    - **Select setup type**: same roles as above; script resets UFW and applies role ports only
 
 ### Role-based firewall rules
 The script always allows `ssh` and then opens additional ports per role:
 - **redis**: `6379/tcp`
 - **mariadb**: `3306/tcp`
-- **api**: `80/tcp`, `443/tcp`
-- **ui-app**: `80/tcp`, `443/tcp`
+- **api**: `443/tcp`
+- **ui-app**: `443/tcp`
 - **vpn**: `1194/udp` (OpenVPN)
-- **deployinator**: no additional ports beyond SSH
+- **deployinator**: `443/tcp`
 
 Notes:
 - UFW is reset each run. Re-running the script will re-apply base rules and your selected role.

@@ -35,6 +35,39 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Helpers for firewall rules
+declare -a OPENED_PORTS
+OPENED_PORTS=()
+
+allow_port() {
+    local rule="$1"
+    ufw allow "$rule"
+    OPENED_PORTS+=("$rule")
+}
+
+configure_ufw_for_role() {
+    case "$SETUP_TYPE" in
+        redis)
+            allow_port "6379/tcp"
+            ;;
+        mariadb)
+            allow_port "3306/tcp"
+            ;;
+        api)
+            allow_port "443/tcp"
+            ;;
+        ui-app)
+            allow_port "443/tcp"
+            ;;
+        vpn)
+            allow_port "1194/udp"
+            ;;
+        deployinator)
+            allow_port "443/tcp"
+            ;;
+    esac
+}
+
 # === Network Configuration (Netplan) ===
 network_config_flow() {
     log "Network configuration mode selected"
@@ -192,6 +225,57 @@ network_config_flow() {
     networkctl status "$TARGET_IFACE" --no-pager 2>/dev/null | cat || true
 }
 
+# === Firewall Configuration (UFW) ===
+firewall_config_flow() {
+    log "Firewall configuration mode selected"
+
+    # Select setup type (role)
+    echo
+    echo "Select setup type:"
+    local options=(redis mariadb api ui-app vpn deployinator)
+    PS3="Enter choice [1-${#options[@]}]: "
+    local opt
+    select opt in "${options[@]}"; do
+        if [[ -n "$opt" ]]; then
+            SETUP_TYPE="$opt"
+            break
+        else
+            echo "Invalid selection. Try again."
+        fi
+    done
+
+    # Ensure UFW is installed
+    if ! command -v ufw &> /dev/null; then
+        log "Installing UFW..."
+        apt install -y ufw
+    fi
+
+    # Reset and configure base rules
+    OPENED_PORTS=()
+    ufw --force reset
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow ssh
+
+    # Allow role-specific ports
+    configure_ufw_for_role
+
+    # Enable firewall
+    ufw --force enable
+
+    success "UFW firewall configured and enabled (firewall-config mode)"
+
+    # Show what we allowed
+    if [[ ${#OPENED_PORTS[@]} -gt 0 ]]; then
+        log "Additional allowed ports for $SETUP_TYPE: ${OPENED_PORTS[*]}"
+    else
+        log "No additional ports opened beyond SSH for $SETUP_TYPE"
+    fi
+
+    log "UFW Status:"
+    ufw status verbose
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    error "This script must be run as root (use sudo)"
@@ -203,7 +287,7 @@ log "Starting Ubuntu Server Initial Setup and Security Hardening..."
 # === Operation Selection ===
 echo
 echo "Select operation mode:"
-op_options=(initial-setup network-config)
+op_options=(initial-setup network-config firewall-config)
 PS3="Enter choice [1-${#op_options[@]}]: "
 select _op in "${op_options[@]}"; do
     if [[ -n "$_op" ]]; then
@@ -216,6 +300,11 @@ done
 
 if [[ "$OPERATION_MODE" == "network-config" ]]; then
     network_config_flow
+    exit 0
+fi
+
+if [[ "$OPERATION_MODE" == "firewall-config" ]]; then
+    firewall_config_flow
     exit 0
 fi
 
@@ -244,40 +333,7 @@ done
 
 # VPN role defaults to OpenVPN (UDP 1194)
 
-# Helpers for firewall rules
-declare -a OPENED_PORTS
-OPENED_PORTS=()
-
-allow_port() {
-    local rule="$1"
-    ufw allow "$rule"
-    OPENED_PORTS+=("$rule")
-}
-
-configure_ufw_for_role() {
-    case "$SETUP_TYPE" in
-        redis)
-            allow_port "6379/tcp"
-            ;;
-        mariadb)
-            allow_port "3306/tcp"
-            ;;
-        api)
-            allow_port "80/tcp"
-            allow_port "443/tcp"
-            ;;
-        ui-app)
-            allow_port "80/tcp"
-            allow_port "443/tcp"
-            ;;
-        vpn)
-            allow_port "1194/udp"
-            ;;
-        deployinator)
-            # No additional ports beyond SSH by default
-            ;;
-    esac
-}
+ 
 
 # Step 1: Update the system
 log "Step 1: Updating system packages..."
