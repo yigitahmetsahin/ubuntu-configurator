@@ -92,3 +92,8 @@ sudo systemctl restart ssh
 Internal use. Add a license here if required for your project.
 
 
+### Documentation policy
+- When adding or updating a feature in this folder, update this `README.md` accordingly.
+- Document new flags, environment variables, inputs/outputs, and any breaking changes.
+- If a new script or tool is introduced, add a short usage example.
+

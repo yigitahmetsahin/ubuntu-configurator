@@ -1,0 +1,9 @@
+---
+description: Ensure READMEs are updated with every feature change
+alwaysApply: true
+---
+
+- When adding or updating a feature, always update the README of the affected package or folder to reflect the change.
+- Include usage notes, any new environment variables, migrations, or breaking changes.
+- If no README exists for the target, create a minimal README with purpose and basic usage.
+
