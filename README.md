@@ -60,7 +60,7 @@ The script always allows `ssh` and then opens additional ports per role:
 - **mariadb**: `3306/tcp`
 - **api**: `443/tcp`
 - **ui-app**: `443/tcp`
-- **vpn**: `1194/udp` (OpenVPN)
+- **vpn**: `1194/udp` (OpenVPN UDP), `443/tcp` (OpenVPN TCP & web forwarding), `943/tcp` (Admin/Client Web UI)
 - **deployinator**: `443/tcp`
 
 Notes:

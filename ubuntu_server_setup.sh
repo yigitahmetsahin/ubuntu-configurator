@@ -84,6 +84,10 @@ configure_ufw_for_role() {
             ;;
         vpn)
             allow_port "1194/udp"
+            # OpenVPN TCP daemon and web service forwarding
+            allow_port "443/tcp"
+            # Admin & Client Web UI default port
+            allow_port "943/tcp"
             ;;
         deployinator)
             allow_port "443/tcp"
