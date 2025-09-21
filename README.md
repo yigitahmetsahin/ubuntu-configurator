@@ -31,9 +31,9 @@ sudo ./ubuntu_server_setup.sh
 Alternatively, download only the script directly from GitHub and run it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yigitahmetsahin/ubuntu-configurator/main/ubuntu_server_setup.sh -o ubuntu_server_setup.sh
-sudo chmod +x ubuntu_server_setup.sh
-sudo ./ubuntu_server_setup.sh
+curl -fsSL https://raw.githubusercontent.com/yigitahmetsahin/ubuntu-configurator/main/ubuntu_server_setup.sh -o "$HOME/ubuntu_server_setup.sh"
+sudo chmod +x "$HOME/ubuntu_server_setup.sh"
+sudo "$HOME/ubuntu_server_setup.sh"
 ```
 
 ### Interactive flow
