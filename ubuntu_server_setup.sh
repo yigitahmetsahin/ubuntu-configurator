@@ -86,7 +86,7 @@ update_ssh_config() {
     local value="$2"
     
     if grep -q "^#*${key}" "$SSH_CONFIG"; then
-        sed -i "s/^#*${key}.*/${key} ${value}/" "$SSH_CONFIG"
+        sed -i "s|^#*${key}.*|${key} ${value}|" "$SSH_CONFIG"
     else
         echo "${key} ${value}" >> "$SSH_CONFIG"
     fi
@@ -191,7 +191,7 @@ success "Fail2Ban installed, configured, and started"
 
 # Step 5: Restart SSH service
 log "Step 5: Restarting SSH service to apply changes..."
-systemctl restart sshd
+systemctl restart ssh
 success "SSH service restarted"
 
 # Step 6: Display final status
