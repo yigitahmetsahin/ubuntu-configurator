@@ -38,11 +38,30 @@ error() {
 # Helpers for firewall rules
 declare -a OPENED_PORTS
 OPENED_PORTS=()
+CURRENT_ALLOW_SOURCE=""
 
 allow_port() {
     local rule="$1"
-    ufw allow "$rule"
-    OPENED_PORTS+=("$rule")
+    local from_src="${CURRENT_ALLOW_SOURCE:-}"
+    if [[ -n "$from_src" ]]; then
+        local port proto
+        if [[ "$rule" == */* ]]; then
+            port="${rule%/*}"
+            proto="${rule#*/}"
+        else
+            port="$rule"
+            proto=""
+        fi
+        if [[ -n "$proto" ]]; then
+            ufw allow from "$from_src" to any port "$port" proto "$proto"
+        else
+            ufw allow from "$from_src" to any port "$port"
+        fi
+        OPENED_PORTS+=("$rule from $from_src")
+    else
+        ufw allow "$rule"
+        OPENED_PORTS+=("$rule")
+    fi
 }
 
 configure_ufw_for_role() {
@@ -258,6 +277,18 @@ firewall_config_flow() {
     ufw allow ssh
 
     # Allow role-specific ports
+    if [[ "$SETUP_TYPE" == "redis" || "$SETUP_TYPE" == "mariadb" ]]; then
+        echo
+        read -rp "Restrict access to a specific IP/CIDR (leave empty to allow all): " _src || true
+        if [[ -n "${_src:-}" ]]; then
+            CURRENT_ALLOW_SOURCE="$_src"
+        else
+            CURRENT_ALLOW_SOURCE=""
+        fi
+    else
+        CURRENT_ALLOW_SOURCE=""
+    fi
+
     configure_ufw_for_role
 
     # Enable firewall
@@ -317,22 +348,6 @@ if [[ "${_f2b_answer,,}" == "y" || "${_f2b_answer,,}" == "yes" ]]; then
     INSTALL_FAIL2BAN="yes"
 fi
 
-# Ask for setup type
-echo
-echo "Select setup type:"
-options=(redis mariadb api ui-app vpn deployinator)
-PS3="Enter choice [1-${#options[@]}]: "
-select opt in "${options[@]}"; do
-    if [[ -n "$opt" ]]; then
-        SETUP_TYPE="$opt"
-        break
-    else
-        echo "Invalid selection. Try again."
-    fi
-done
-
-# VPN role defaults to OpenVPN (UDP 1194)
-
  
 
 # Step 1: Update the system
@@ -341,45 +356,10 @@ apt update -y
 apt upgrade -y
 success "System packages updated successfully"
 
-# Step 2: Configure UFW Firewall
-log "Step 2: Configuring UFW firewall for setup: $SETUP_TYPE"
-
-# Install ufw if not already installed
-if ! command -v ufw &> /dev/null; then
-    log "Installing UFW..."
-    apt install -y ufw
-fi
-
-# Reset UFW to defaults
-ufw --force reset
-
-# Set default policies
-ufw default deny incoming
-ufw default allow outgoing
-
-# Allow SSH (port 22)
-ufw allow ssh
-
-# Allow role-specific ports
-configure_ufw_for_role
-
-# Enable UFW
-ufw --force enable
-
-success "UFW firewall configured and enabled"
-
-# Show what we allowed
-if [[ ${#OPENED_PORTS[@]} -gt 0 ]]; then
-    log "Additional allowed ports for $SETUP_TYPE: ${OPENED_PORTS[*]}"
-else
-    log "No additional ports opened beyond SSH for $SETUP_TYPE"
-fi
-
-log "UFW Status:"
-ufw status verbose
+ 
 
 # Step 3: Harden SSH Configuration
-log "Step 3: Hardening SSH configuration..."
+log "Step 2: Hardening SSH configuration..."
 
 # Backup original SSH config
 cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)
@@ -418,7 +398,7 @@ success "SSH configuration hardened"
 
 # Step 4: Install and configure Fail2Ban (optional)
 if [[ "$INSTALL_FAIL2BAN" == "yes" ]]; then
-    log "Step 4: Installing and configuring Fail2Ban..."
+    log "Step 3: Installing and configuring Fail2Ban..."
 
     # Install fail2ban
     apt install -y fail2ban
@@ -501,20 +481,24 @@ else
 fi
 
 # Step 5: Restart SSH service
-log "Step 5: Restarting SSH service to apply changes..."
+log "Step 4: Restarting SSH service to apply changes..."
 systemctl restart ssh
 success "SSH service restarted"
 
-# Step 6: Display final status
+# Step 5: Display final status
 log "Setup completed successfully!"
 echo
 success "=== SECURITY SETUP SUMMARY ==="
 echo "[OK] System packages updated"
+if [[ "$OPERATION_MODE" == "firewall-config" ]]; then
 echo "[OK] UFW firewall enabled (SSH allowed, all other incoming denied)"
 if [[ ${#OPENED_PORTS[@]} -gt 0 ]]; then
 echo "[OK] Additional allowed ports for $SETUP_TYPE: ${OPENED_PORTS[*]}"
 else
-echo "[OK] No additional ports opened for $SETUP_TYPE"
+echo "[OK] No additional ports opened beyond SSH"
+fi
+else
+echo "[INFO] Firewall not modified in initial-setup mode"
 fi
 echo "[OK] SSH hardened (pubkey auth only, PAM disabled, root prohibit-password)"
 if [[ "$INSTALL_FAIL2BAN" == "yes" ]]; then
