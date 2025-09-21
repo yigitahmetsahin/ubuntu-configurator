@@ -77,9 +77,11 @@ configure_ufw_for_role() {
             allow_port "3306/tcp"
             ;;
         api)
+            allow_port "80/tcp"
             allow_port "443/tcp"
             ;;
         ui-app)
+            allow_port "80/tcp"
             allow_port "443/tcp"
             ;;
         vpn)
@@ -90,6 +92,8 @@ configure_ufw_for_role() {
             allow_port "943/tcp"
             ;;
         deployinator)
+            allow_port "80/tcp"
+            allow_port "3000/tcp"
             allow_port "443/tcp"
             ;;
     esac

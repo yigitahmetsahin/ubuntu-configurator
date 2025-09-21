@@ -33,7 +33,9 @@ sudo ./ubuntu_server_setup.sh
 Alternatively, download only the script directly from GitHub and run it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yigitahmetsahin/ubuntu-configurator/main/ubuntu_server_setup.sh -o "$HOME/ubuntu_server_setup.sh"
+curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+  "https://raw.githubusercontent.com/yigitahmetsahin/ubuntu-configurator/main/ubuntu_server_setup.sh?t=$(date +%s)" \
+  -o "$HOME/ubuntu_server_setup.sh"
 sudo chmod +x "$HOME/ubuntu_server_setup.sh"
 sudo "$HOME/ubuntu_server_setup.sh"
 ```
@@ -58,10 +60,10 @@ You will be prompted for:
 The script always allows `ssh` and then opens additional ports per role:
 - **redis**: `6379/tcp`
 - **mariadb**: `3306/tcp`
-- **api**: `443/tcp`
-- **ui-app**: `443/tcp`
+- **api**: `80/tcp`, `443/tcp`
+- **ui-app**: `80/tcp`, `443/tcp`
 - **vpn**: `1194/udp` (OpenVPN UDP), `443/tcp` (OpenVPN TCP & web forwarding), `943/tcp` (Admin/Client Web UI)
-- **deployinator**: `443/tcp`
+- **deployinator**: `80/tcp`, `3000/tcp`, `443/tcp`
 
 Notes:
 - UFW is reset each run. Re-running the script will re-apply base rules and your selected role.
