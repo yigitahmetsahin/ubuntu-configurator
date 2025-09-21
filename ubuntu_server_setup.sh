@@ -6,6 +6,11 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root (use: sudo $0)"
+  exit 1
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
