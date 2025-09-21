@@ -7,10 +7,12 @@ This directory contains `ubuntu_server_setup.sh`, an interactive CLI script to p
   - **initial-setup**: Security hardening (no firewall changes)
   - **network-config**: Interactive netplan configuration for an interface (DHCP or static)
   - **firewall-config**: Only configure/reset UFW based on selected role (no SSH/netplan changes)
+  - **authorized-key**: Add an SSH public key to a user's `~/.ssh/authorized_keys`
 - **Updates system packages**: `apt update && apt upgrade`
 - **Configures UFW firewall**: Only in `firewall-config` mode. Resets rules, denies incoming and allows outgoing by default, always allows `ssh`, then opens extra ports based on your selected role
 - **Hardens SSH**: disables password authentication, restricts root login, reduces auth retries, disables X11 forwarding, and more
 - **Optional Fail2Ban**: if chosen, installs and configures Fail2Ban to protect SSH
+ - **Optional Authorized Key**: interactively add an SSH public key to a user's `~/.ssh/authorized_keys`
 
 ### Requirements
 - Ubuntu Server with internet access
@@ -41,6 +43,8 @@ You will be prompted for:
 - **Operation mode**: `initial-setup`, `network-config`, or `firewall-config`
   - If `initial-setup`:
     - **Install Fail2Ban (y/N)?**
+  - If `authorized-key`:
+    - Prompts for username and SSH public key, then creates/updates `~/.ssh/authorized_keys` with secure permissions and avoids duplicates.
   - If `network-config`:
     - **Select interface**: choose from missing (not yet in netplan) or existing interfaces
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static

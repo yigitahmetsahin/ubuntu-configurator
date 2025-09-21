@@ -40,6 +40,10 @@ declare -a OPENED_PORTS
 OPENED_PORTS=()
 CURRENT_ALLOW_SOURCE=""
 
+# Authorized key flow flags
+ADD_SSH_KEY="no"
+AUTHORIZED_KEY_FOR=""
+
 allow_port() {
     local rule="$1"
     local from_src="${CURRENT_ALLOW_SOURCE:-}"
@@ -306,6 +310,64 @@ firewall_config_flow() {
     ufw status verbose
 }
 
+# === Add SSH Authorized Key (function) ===
+add_authorized_key_flow() {
+    log "Adding SSH authorized key to a user's account"
+
+    local target_user=""
+    while [[ -z "$target_user" ]]; do
+        read -rp "Enter the username to add the key for (e.g., ubuntu): " target_user || true
+        if [[ -z "${target_user:-}" ]]; then
+            echo "Username cannot be empty. Try again."
+            continue
+        fi
+        if ! id -u "$target_user" >/dev/null 2>&1; then
+            echo "User '$target_user' does not exist. Try again."
+            target_user=""
+        fi
+    done
+
+    echo
+    local pubkey=""
+    read -rp "Paste the SSH public key (ssh-ed25519/ssh-rsa/ecdsa-...): " pubkey || true
+    if [[ -z "${pubkey:-}" ]]; then
+        warning "No key provided. Skipping authorized_keys update."
+        return 0
+    fi
+
+    # Resolve user's home directory
+    local home_dir=""
+    home_dir=$(getent passwd "$target_user" 2>/dev/null | cut -d: -f6) || true
+    if [[ -z "${home_dir:-}" ]]; then
+        home_dir=$(eval echo "~$target_user")
+    fi
+    if [[ -z "${home_dir:-}" || ! -d "$home_dir" ]]; then
+        error "Could not determine home directory for user '$target_user'"
+        return 1
+    fi
+
+    local ssh_dir="$home_dir/.ssh"
+    local auth_file="$ssh_dir/authorized_keys"
+
+    mkdir -p "$ssh_dir"
+    touch "$auth_file"
+
+    # Avoid duplicate entries
+    if grep -qxF "$pubkey" "$auth_file" 2>/dev/null; then
+        success "Key already present in $auth_file"
+    else
+        echo "$pubkey" >> "$auth_file"
+        success "Key added to $auth_file"
+    fi
+
+    chown -R "$target_user":"$target_user" "$ssh_dir"
+    chmod 700 "$ssh_dir"
+    chmod 600 "$auth_file"
+
+    ADD_SSH_KEY="yes"
+    AUTHORIZED_KEY_FOR="$target_user"
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    error "This script must be run as root (use sudo)"
@@ -317,7 +379,7 @@ log "Starting Ubuntu Server Initial Setup and Security Hardening..."
 # === Operation Selection ===
 echo
 echo "Select operation mode:"
-op_options=(initial-setup network-config firewall-config)
+op_options=(initial-setup network-config firewall-config authorized-key)
 PS3="Enter choice [1-${#op_options[@]}]: "
 select _op in "${op_options[@]}"; do
     if [[ -n "$_op" ]]; then
@@ -338,15 +400,21 @@ if [[ "$OPERATION_MODE" == "firewall-config" ]]; then
     exit 0
 fi
 
-# === CLI Prompts ===
-# Ask whether to install Fail2Ban
-echo
-INSTALL_FAIL2BAN="no"
-read -rp "Install Fail2Ban (y/N)? " _f2b_answer || true
-if [[ "${_f2b_answer,,}" == "y" || "${_f2b_answer,,}" == "yes" ]]; then
-    INSTALL_FAIL2BAN="yes"
+if [[ "$OPERATION_MODE" == "authorized-key" ]]; then
+    add_authorized_key_flow
+    exit 0
 fi
 
+# === CLI Prompts ===
+# Ask whether to install Fail2Ban (only relevant in initial-setup mode)
+echo
+INSTALL_FAIL2BAN="no"
+if [[ "$OPERATION_MODE" == "initial-setup" ]]; then
+    read -rp "Install Fail2Ban (y/N)? " _f2b_answer || true
+    if [[ "${_f2b_answer,,}" == "y" || "${_f2b_answer,,}" == "yes" ]]; then
+        INSTALL_FAIL2BAN="yes"
+    fi
+fi
  
 
 # Step 1: Update the system
@@ -479,7 +547,7 @@ else
     log "Step 4: Skipping Fail2Ban installation per user choice"
 fi
 
-# Step 5: Restart SSH service
+# Step 4: Restart SSH service
 log "Step 4: Restarting SSH service to apply changes..."
 systemctl restart ssh
 success "SSH service restarted"
