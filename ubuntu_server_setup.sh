@@ -35,6 +35,163 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# === Network Configuration (Netplan) ===
+network_config_flow() {
+    log "Network configuration mode selected"
+
+    # Ensure netplan is installed
+    if ! command -v netplan >/dev/null 2>&1; then
+        log "Netplan not found. Installing netplan.io..."
+        apt update -y
+        apt install -y netplan.io
+    fi
+
+    # List all non-loopback interfaces (filter common virtual types)
+    mapfile -t ALL_IFACES < <(ip -o link show | awk -F': ' '{print $2}' | grep -v '^lo$' | grep -vE '^(docker|veth|br|virbr|tun|tap|wg|cni|flannel|kube)')
+    if [[ ${#ALL_IFACES[@]} -eq 0 ]]; then
+        error "No network interfaces found to configure"
+        exit 1
+    fi
+
+    # Get interfaces already present in netplan (best-effort)
+    local -a EXISTING
+    EXISTING=()
+    if netplan get >/dev/null 2>&1; then
+        mapfile -t EXISTING < <(netplan get 2>/dev/null | awk '
+            $1=="ethernets:" {in_eth=1; next}
+            in_eth && NF==0 {in_eth=0}
+            in_eth && $1 ~ /^[a-zA-Z0-9_-]+:/ { gsub(":","",$1); print $1 }')
+    fi
+
+    # Compute missing interfaces (present on system but not in netplan)
+    local -a MISSING
+    MISSING=()
+    local found
+    for iface in "${ALL_IFACES[@]}"; do
+        found=0
+        for ex in "${EXISTING[@]:-}"; do
+            if [[ "$iface" == "$ex" ]]; then
+                found=1
+                break
+            fi
+        done
+        if [[ $found -eq 0 ]]; then
+            MISSING+=("$iface")
+        fi
+    done
+
+    local -a CHOICES
+    if [[ ${#MISSING[@]} -gt 0 ]]; then
+        CHOICES=("${MISSING[@]}")
+    else
+        warning "All detected interfaces appear to be defined in netplan already."
+        echo
+        local _reconf
+        read -rp "Reconfigure an existing interface (y/N)? " _reconf || true
+        if [[ "${_reconf,,}" != "y" && "${_reconf,,}" != "yes" ]]; then
+            log "No changes requested. Exiting."
+            exit 0
+        fi
+        if [[ ${#EXISTING[@]} -gt 0 ]]; then
+            CHOICES=("${EXISTING[@]}")
+        else
+            CHOICES=("${ALL_IFACES[@]}")
+        fi
+    fi
+
+    echo
+    echo "Select interface to configure:"
+    PS3="Enter choice [1-${#CHOICES[@]}]: "
+    local TARGET_IFACE
+    select _opt in "${CHOICES[@]}"; do
+        if [[ -n "$_opt" ]]; then
+            TARGET_IFACE="$_opt"
+            break
+        else
+            echo "Invalid selection. Try again."
+        fi
+    done
+
+    echo
+    local DHCP4="no"
+    read -rp "Use DHCP for IPv4 on ${TARGET_IFACE} (y/N)? " _dhcp || true
+    if [[ "${_dhcp,,}" == "y" || "${_dhcp,,}" == "yes" ]]; then
+        DHCP4="yes"
+    fi
+
+    local ADDRESS_CIDR="" GATEWAY4="" DNS_ADDRESSES="" OPTIONAL_YN="yes"
+    if [[ "$DHCP4" == "no" ]]; then
+        while true; do
+            read -rp "Static IPv4 (CIDR, e.g., 192.168.1.50/24): " ADDRESS_CIDR || true
+            if [[ "$ADDRESS_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/(3[0-2]|[12]?[0-9])$ ]]; then
+                break
+            fi
+            echo "Invalid CIDR. Try again."
+        done
+        while true; do
+            read -rp "Default gateway IPv4 (e.g., 192.168.1.1): " GATEWAY4 || true
+            if [[ "$GATEWAY4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                break
+            fi
+            echo "Invalid IPv4. Try again."
+        done
+        local DNS_INPUT=""
+        read -rp "DNS servers (comma-separated, e.g., 1.1.1.1,8.8.8.8) [optional]: " DNS_INPUT || true
+        if [[ -n "${DNS_INPUT:-}" ]]; then
+            DNS_ADDRESSES=$(echo "$DNS_INPUT" | tr -d ' ' | sed 's/,/, /g')
+        fi
+    fi
+
+    read -rp "Mark interface as optional (skip boot wait) (Y/n)? " _opt_ans || true
+    if [[ "${_opt_ans,,}" == "n" || "${_opt_ans,,}" == "no" ]]; then
+        OPTIONAL_YN="no"
+    fi
+
+    local NETPLAN_FILE="/etc/netplan/60-${TARGET_IFACE}.yaml"
+    if [[ -f "$NETPLAN_FILE" ]]; then
+        cp "$NETPLAN_FILE" "${NETPLAN_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+        log "Backed up existing ${NETPLAN_FILE}"
+    fi
+
+    # Write netplan YAML
+    {
+        echo "network:"
+        echo "    version: 2"
+        echo "    renderer: networkd"
+        echo "    ethernets:"
+        echo "        ${TARGET_IFACE}:"
+        if [[ "$DHCP4" == "yes" ]]; then
+            echo "            dhcp4: true"
+        else
+            echo "            dhcp4: false"
+            echo "            addresses: [${ADDRESS_CIDR}]"
+            echo "            routes:"
+            echo "            - to: default"
+            echo "              via: ${GATEWAY4}"
+            if [[ -n "${DNS_ADDRESSES:-}" ]]; then
+                echo "            nameservers:"
+                echo "                addresses: [${DNS_ADDRESSES}]"
+            fi
+        fi
+        if [[ "$OPTIONAL_YN" == "yes" ]]; then
+            echo "            optional: true"
+        fi
+    } > "$NETPLAN_FILE"
+
+    log "Wrote netplan configuration to ${NETPLAN_FILE}"
+    log "Validating netplan configuration..."
+    netplan generate
+    success "Netplan configuration is syntactically valid."
+    log "Applying netplan configuration..."
+    netplan apply
+    success "Netplan applied."
+
+    echo
+    log "Interface status for ${TARGET_IFACE}:"
+    ip addr show "$TARGET_IFACE" || true
+    networkctl status "$TARGET_IFACE" --no-pager 2>/dev/null | cat || true
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    error "This script must be run as root (use sudo)"
@@ -42,6 +199,25 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 log "Starting Ubuntu Server Initial Setup and Security Hardening..."
+
+# === Operation Selection ===
+echo
+echo "Select operation mode:"
+op_options=(initial-setup network-config)
+PS3="Enter choice [1-${#op_options[@]}]: "
+select _op in "${op_options[@]}"; do
+    if [[ -n "$_op" ]]; then
+        OPERATION_MODE="$_op"
+        break
+    else
+        echo "Invalid selection. Try again."
+    fi
+done
+
+if [[ "$OPERATION_MODE" == "network-config" ]]; then
+    network_config_flow
+    exit 0
+fi
 
 # === CLI Prompts ===
 # Ask whether to install Fail2Ban
