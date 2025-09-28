@@ -78,11 +78,15 @@ configure_ufw_for_role() {
             ;;
         api)
             allow_port "80/tcp"
+            allow_port "80/udp"
             allow_port "443/tcp"
+            allow_port "443/udp"
             ;;
         ui-app)
             allow_port "80/tcp"
+            allow_port "80/udp"
             allow_port "443/tcp"
+            allow_port "443/udp"
             ;;
         vpn)
             allow_port "1194/udp"

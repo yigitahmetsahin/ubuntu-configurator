@@ -63,8 +63,8 @@ You will be prompted for:
 The script always allows `ssh` and then opens additional ports per role:
 - **redis**: `6379/tcp`
 - **mariadb**: `3306/tcp`
-- **api**: `80/tcp`, `443/tcp`
-- **ui-app**: `80/tcp`, `443/tcp`
+- **api**: `80/tcp`, `80/udp`, `443/tcp`, `443/udp`
+- **ui-app**: `80/tcp`, `80/udp`, `443/tcp`, `443/udp`
 - **vpn**: `1194/udp` (OpenVPN UDP), `443/tcp` (OpenVPN TCP & web forwarding), `943/tcp` (Admin/Client Web UI)
 - **deployinator**: `80/tcp`, `3000/tcp`, `443/tcp`
 
