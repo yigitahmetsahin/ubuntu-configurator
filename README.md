@@ -50,11 +50,9 @@ You will be prompted for:
   - If `network-config`:
     - **Select interface**: choose from missing (not yet in netplan) or existing interfaces
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static
-    - If static: 
-      - Provide `address (CIDR)` for the interface
-      - **Network type**: choose between public (default route) or local (CIDR-specific routing)
-      - If local: specify CIDR range that should use this interface (e.g., `192.168.0.0/16`)
-      - Provide `gateway4` and optional `DNS servers`
+    - **Network type**: choose between public (internet access) or local (CIDR-specific, no default route)
+      - If local: specify CIDR range that should use this interface (e.g., `192.168.0.0/16`); the script prevents `0.0.0.0/0`
+    - If static: provide `address (CIDR)` and optional `DNS servers`
     - **Optional (Y/n)**: mark interface as optional to skip boot wait
   - If `firewall-config`:
     - **Select setup type**: same roles as above; script resets UFW and applies role ports only
@@ -86,8 +84,11 @@ When running `network-config`, it also:
 
 #### Network routing behavior:
 - **Public networks**: Interface becomes the default route for internet traffic (metric 100)
-- **Local networks**: Interface only routes traffic to the specified CIDR range (metric 100), other traffic uses existing default routes
-- **DHCP networks**: Routing is managed automatically by DHCP
+  - **DHCP public**: IP address and default routing managed automatically by DHCP
+  - **Static public**: Manual IP configuration with default route via specified gateway
+- **Local networks**: Interface never advertises a default gateway; only the specified CIDR range is routed through this interface (metric 100)
+  - **DHCP local**: IP obtained via DHCP, but DHCP routes are disabled. You can optionally provide a local gateway, otherwise traffic stays on-link.
+  - **Static local**: Manual IP configuration; optional gateway only applies to the specified CIDR range, never to the internet.
 
 ### Troubleshooting
 - Check firewall: `sudo ufw status verbose`
