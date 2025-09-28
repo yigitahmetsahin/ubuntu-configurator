@@ -52,6 +52,7 @@ You will be prompted for:
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static
     - **Network type**: choose between public (internet access) or local (CIDR-specific, no default route)
       - If local: specify CIDR range that should use this interface (e.g., `192.168.0.0/16`); the script prevents `0.0.0.0/0`
+      - Local mode disables default routes and DNS from DHCP, sets route metric to 500, and adds a `scope: link` route for the specified CIDR
     - If static: provide `address (CIDR)` and optional `DNS servers`
     - **Optional (Y/n)**: mark interface as optional to skip boot wait
   - If `firewall-config`:
@@ -86,9 +87,9 @@ When running `network-config`, it also:
 - **Public networks**: Interface becomes the default route for internet traffic (metric 100)
   - **DHCP public**: IP address and default routing managed automatically by DHCP
   - **Static public**: Manual IP configuration with default route via specified gateway
-- **Local networks**: Interface never advertises a default gateway; only the specified CIDR range is routed through this interface (metric 100)
-  - **DHCP local**: IP obtained via DHCP, but DHCP routes are disabled. You can optionally provide a local gateway, otherwise traffic stays on-link.
-  - **Static local**: Manual IP configuration; optional gateway only applies to the specified CIDR range, never to the internet.
+- **Local networks**: Interface never advertises a default gateway; only the specified CIDR is routed through this interface with `scope: link`
+  - **DHCP local**: IP obtained via DHCP, default route/DNS disabled, and route metric set to 500
+  - **Static local**: Manual IP configuration with a `scope: link` route for the CIDR
 
 ### Troubleshooting
 - Check firewall: `sudo ufw status verbose`

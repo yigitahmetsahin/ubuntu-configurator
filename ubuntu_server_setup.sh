@@ -184,7 +184,7 @@ network_config_flow() {
     fi
 
     local ADDRESS_CIDR="" GATEWAY4="" DNS_ADDRESSES="" OPTIONAL_YN="yes"
-    local NETWORK_TYPE="" LOCAL_CIDR="" LOCAL_GATEWAY="" IS_DEFAULT_ROUTE="yes"
+    local NETWORK_TYPE="" LOCAL_CIDR="" IS_DEFAULT_ROUTE="yes"
     
     # Ask about network type for both DHCP and static configurations
     echo
@@ -219,17 +219,6 @@ network_config_flow() {
                 break
             fi
             echo "Invalid CIDR range. Try again (0.0.0.0/0 not allowed)."
-        done
-
-        while true; do
-            read -rp "Gateway for ${LOCAL_CIDR} traffic (optional, press Enter for on-link only): " LOCAL_GATEWAY || true
-            if [[ -z "${LOCAL_GATEWAY:-}" ]]; then
-                break
-            fi
-            if [[ "$LOCAL_GATEWAY" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-                break
-            fi
-            echo "Invalid IPv4. Try again."
         done
     fi
     
@@ -274,6 +263,7 @@ network_config_flow() {
     {
         echo "network:"
         echo "    version: 2"
+        echo "    renderer: networkd"
         echo "    ethernets:"
         echo "        ${TARGET_IFACE}:"
         if [[ "$DHCP4" == "yes" ]]; then
@@ -282,13 +272,11 @@ network_config_flow() {
             if [[ "$NETWORK_TYPE" == "local" ]]; then
                 echo "            dhcp4-overrides:"
                 echo "                use-routes: false"
+                echo "                use-dns: false"
+                echo "                route-metric: 500"
                 echo "            routes:"
                 echo "            - to: ${LOCAL_CIDR}"
-                if [[ -n "${LOCAL_GATEWAY:-}" ]]; then
-                    echo "              via: ${LOCAL_GATEWAY}"
-                fi
-                echo "              on-link: true"
-                echo "              metric: 100"
+                echo "              scope: link"
             fi
         else
             echo "            dhcp4: false"
@@ -297,11 +285,7 @@ network_config_flow() {
             if [[ "$NETWORK_TYPE" == "local" && -n "${LOCAL_CIDR:-}" ]]; then
                 # Local network: route only specific CIDR range through this interface
                 echo "            - to: ${LOCAL_CIDR}"
-                if [[ -n "${LOCAL_GATEWAY:-}" ]]; then
-                    echo "              via: ${LOCAL_GATEWAY}"
-                fi
-                echo "              on-link: true"
-                echo "              metric: 100"
+                echo "              scope: link"
             elif [[ "$NETWORK_TYPE" == "public" ]]; then
                 # Public network: set as default route
                 echo "            - to: default"
@@ -324,22 +308,14 @@ network_config_flow() {
     if [[ "$DHCP4" == "yes" && "$NETWORK_TYPE" == "local" ]]; then
         log "Configuration: DHCP local network for ${TARGET_IFACE}"
         log "IP obtained via DHCP, but only ${LOCAL_CIDR} traffic will use this interface"
-        if [[ -n "${LOCAL_GATEWAY:-}" ]]; then
-            log "Local gateway set to ${LOCAL_GATEWAY}"
-        else
-            log "No gateway advertised; traffic stays on-link within ${LOCAL_CIDR}"
-        fi
+        log "DHCP routes and DNS disabled; metric set to 500"
     elif [[ "$DHCP4" == "yes" ]]; then
         log "Configuration: DHCP public network for ${TARGET_IFACE}"
         log "IP and routing obtained via DHCP (default route)"
     elif [[ "$NETWORK_TYPE" == "local" ]]; then
         log "Configuration: Static local network for ${TARGET_IFACE}"
         log "Only ${LOCAL_CIDR} traffic will use this interface"
-        if [[ -n "${LOCAL_GATEWAY:-}" ]]; then
-            log "Local gateway set to ${LOCAL_GATEWAY}"
-        else
-            log "No gateway advertised; traffic stays on-link within ${LOCAL_CIDR}"
-        fi
+        log "Scope set to link (no default gateway advertised)"
     elif [[ "$NETWORK_TYPE" == "public" ]]; then
         log "Configuration: Static public network (default route via ${GATEWAY4})"
         log "This interface will handle internet traffic as the default route"
