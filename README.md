@@ -50,7 +50,11 @@ You will be prompted for:
   - If `network-config`:
     - **Select interface**: choose from missing (not yet in netplan) or existing interfaces
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static
-    - If static: provide `address (CIDR)`, `gateway4`, optional `DNS servers`
+    - If static: 
+      - Provide `address (CIDR)` for the interface
+      - **Network type**: choose between public (default route) or local (CIDR-specific routing)
+      - If local: specify CIDR range that should use this interface (e.g., `192.168.0.0/16`)
+      - Provide `gateway4` and optional `DNS servers`
     - **Optional (Y/n)**: mark interface as optional to skip boot wait
   - If `firewall-config`:
     - **Select setup type**: same roles as above; script resets UFW and applies role ports only
@@ -79,6 +83,11 @@ When running `network-config`, it also:
 - Writes `/etc/netplan/60-<iface>.yaml` (backs up existing file if present)
 - Validates configuration (`netplan generate`) and applies it (`netplan apply`)
 - Shows interface status: `ip addr show <iface>` and `networkctl status <iface>`
+
+#### Network routing behavior:
+- **Public networks**: Interface becomes the default route for internet traffic (metric 100)
+- **Local networks**: Interface only routes traffic to the specified CIDR range (metric 100), other traffic uses existing default routes
+- **DHCP networks**: Routing is managed automatically by DHCP
 
 ### Troubleshooting
 - Check firewall: `sudo ufw status verbose`

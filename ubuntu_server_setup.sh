@@ -184,6 +184,8 @@ network_config_flow() {
     fi
 
     local ADDRESS_CIDR="" GATEWAY4="" DNS_ADDRESSES="" OPTIONAL_YN="yes"
+    local NETWORK_TYPE="" LOCAL_CIDR="" IS_DEFAULT_ROUTE="yes"
+    
     if [[ "$DHCP4" == "no" ]]; then
         while true; do
             read -rp "Static IPv4 (CIDR, e.g., 192.168.1.50/24): " ADDRESS_CIDR || true
@@ -192,13 +194,53 @@ network_config_flow() {
             fi
             echo "Invalid CIDR. Try again."
         done
+        
+        echo
+        echo "Network type selection:"
+        echo "1) Public network (default route, internet access)"
+        echo "2) Local network (route specific CIDR ranges only)"
         while true; do
-            read -rp "Default gateway IPv4 (e.g., 192.168.1.1): " GATEWAY4 || true
+            read -rp "Select network type [1-2]: " _net_type || true
+            case "$_net_type" in
+                1)
+                    NETWORK_TYPE="public"
+                    break
+                    ;;
+                2)
+                    NETWORK_TYPE="local"
+                    IS_DEFAULT_ROUTE="no"
+                    break
+                    ;;
+                *)
+                    echo "Invalid selection. Choose 1 or 2."
+                    ;;
+            esac
+        done
+        
+        if [[ "$NETWORK_TYPE" == "local" ]]; then
+            echo
+            log "Local network selected. This interface will only route specific CIDR ranges."
+            while true; do
+                read -rp "Enter CIDR range for local traffic (e.g., 192.168.0.0/16, 10.0.0.0/8): " LOCAL_CIDR || true
+                if [[ "$LOCAL_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/(3[0-2]|[12]?[0-9])$ ]]; then
+                    break
+                fi
+                echo "Invalid CIDR range. Try again."
+            done
+        fi
+        
+        while true; do
+            if [[ "$NETWORK_TYPE" == "local" ]]; then
+                read -rp "Gateway for local traffic (e.g., 192.168.1.1): " GATEWAY4 || true
+            else
+                read -rp "Default gateway IPv4 (e.g., 192.168.1.1): " GATEWAY4 || true
+            fi
             if [[ "$GATEWAY4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
                 break
             fi
             echo "Invalid IPv4. Try again."
         done
+        
         local DNS_INPUT=""
         read -rp "DNS servers (comma-separated, e.g., 1.1.1.1,8.8.8.8) [optional]: " DNS_INPUT || true
         if [[ -n "${DNS_INPUT:-}" ]]; then
@@ -229,8 +271,22 @@ network_config_flow() {
             echo "            dhcp4: false"
             echo "            addresses: [${ADDRESS_CIDR}]"
             echo "            routes:"
-            echo "            - to: default"
-            echo "              via: ${GATEWAY4}"
+            if [[ "$NETWORK_TYPE" == "local" && -n "${LOCAL_CIDR:-}" ]]; then
+                # Local network: route only specific CIDR range through this interface
+                echo "            - to: ${LOCAL_CIDR}"
+                echo "              via: ${GATEWAY4}"
+                echo "              metric: 100"
+            elif [[ "$IS_DEFAULT_ROUTE" == "yes" ]]; then
+                # Public network: set as default route
+                echo "            - to: default"
+                echo "              via: ${GATEWAY4}"
+                echo "              metric: 100"
+            else
+                # Fallback: just add the gateway without default route
+                echo "            - to: 0.0.0.0/0"
+                echo "              via: ${GATEWAY4}"
+                echo "              metric: 200"
+            fi
             if [[ -n "${DNS_ADDRESSES:-}" ]]; then
                 echo "            nameservers:"
                 echo "                addresses: [${DNS_ADDRESSES}]"
@@ -242,6 +298,20 @@ network_config_flow() {
     } > "$NETPLAN_FILE"
 
     log "Wrote netplan configuration to ${NETPLAN_FILE}"
+    
+    # Show configuration summary
+    if [[ "$DHCP4" == "yes" ]]; then
+        log "Configuration: DHCP enabled for ${TARGET_IFACE}"
+    elif [[ "$NETWORK_TYPE" == "local" ]]; then
+        log "Configuration: Local network (${LOCAL_CIDR} traffic via ${GATEWAY4})"
+        log "This interface will only handle traffic to ${LOCAL_CIDR}"
+    elif [[ "$NETWORK_TYPE" == "public" ]]; then
+        log "Configuration: Public network (default route via ${GATEWAY4})"
+        log "This interface will handle internet traffic as the default route"
+    else
+        log "Configuration: Static IP ${ADDRESS_CIDR} with gateway ${GATEWAY4}"
+    fi
+    
     log "Validating netplan configuration..."
     netplan generate
     success "Netplan configuration is syntactically valid."
