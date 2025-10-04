@@ -5,7 +5,7 @@ This directory contains `ubuntu_server_setup.sh`, an interactive CLI script to p
 ### What it does
 - **Operation modes**: Choose between `initial-setup`, `network-config`, or `firewall-config`
   - **initial-setup**: Security hardening (no firewall changes)
-  - **network-config**: Interactive netplan configuration for an interface (DHCP or static)
+  - **network-config**: Interactive netplan configuration for an interface. Offers **Add config** (existing flow) or **Remove config** (delete `/etc/netplan/60-<iface>.yaml` and apply changes).
   - **firewall-config**: Only configure/reset UFW based on selected role (no SSH/netplan changes)
   - **authorized-key**: Add an SSH public key to a user's `~/.ssh/authorized_keys`
 - **Updates system packages**: `apt update && apt upgrade`
@@ -48,6 +48,9 @@ You will be prompted for:
   - If `authorized-key`:
     - Prompts for username and SSH public key, then creates/updates `~/.ssh/authorized_keys` with secure permissions and avoids duplicates.
   - If `network-config`:
+    - **Action**: choose `add-config` or `remove-config`
+      - `remove-config`: select an existing interface defined in netplan; the script backs up and removes `/etc/netplan/60-<iface>.yaml`, validates, and applies.
+      - `add-config`: existing flow described below.
     - **Select interface**: choose from missing (not yet in netplan) or existing interfaces
     - **DHCP (y/N)**: use DHCP for IPv4 or configure static
     - **Network type**: choose between public (internet access) or local (CIDR-specific, no default route)

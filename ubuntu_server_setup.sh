@@ -103,6 +103,73 @@ configure_ufw_for_role() {
     esac
 }
 
+remove_network_config() {
+    local existing_ifaces=("$@")
+
+    if [[ ${#existing_ifaces[@]} -eq 0 ]]; then
+        warning "No interfaces currently defined in netplan; nothing to remove."
+        return
+    fi
+
+    echo
+    echo "Select interface to remove from netplan:"
+    local old_ps3="$PS3"
+    PS3="Enter choice [1-${#existing_ifaces[@]}]: "
+    local target_iface=""
+    select _iface in "${existing_ifaces[@]}"; do
+        if [[ -n "$_iface" ]]; then
+            target_iface="$_iface"
+            break
+        else
+            echo "Invalid selection. Try again."
+        fi
+    done
+    PS3="$old_ps3"
+
+    if [[ -z "${target_iface}" ]]; then
+        warning "No interface selected. Aborting removal."
+        return
+    fi
+
+    local netplan_file=""
+    local candidate
+    for candidate in "/etc/netplan/60-${target_iface}.yaml" "/etc/netplan/60-${target_iface}.yml"; do
+        if [[ -f "$candidate" ]]; then
+            netplan_file="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$netplan_file" ]]; then
+        warning "No dedicated netplan file named 60-${target_iface}.yaml or .yml found."
+        warning "Please remove ${target_iface} manually if it is defined elsewhere."
+        return
+    fi
+
+    local backup="${netplan_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$netplan_file" "$backup"
+    log "Backed up ${netplan_file} to ${backup}"
+
+    rm "$netplan_file"
+    log "Removed ${netplan_file}"
+
+    log "Validating netplan configuration..."
+    if ! netplan generate; then
+        error "Netplan validation failed after removal. Restoring ${netplan_file}."
+        mv "$backup" "$netplan_file"
+        return
+    fi
+    success "Netplan configuration is syntactically valid."
+
+    log "Applying netplan configuration..."
+    netplan apply
+    success "Netplan applied. ${target_iface} configuration removed."
+
+    echo
+    log "Current netplan files:"
+    ls -1 /etc/netplan || true
+}
+
 # === Network Configuration (Netplan) ===
 network_config_flow() {
     log "Network configuration mode selected"
@@ -129,6 +196,27 @@ network_config_flow() {
             $1=="ethernets:" {in_eth=1; next}
             in_eth && NF==0 {in_eth=0}
             in_eth && $1 ~ /^[a-zA-Z0-9_-]+:/ { gsub(":","",$1); print $1 }')
+    fi
+
+    echo
+    echo "Select network configuration action:"
+    local action_options=("add-config" "remove-config")
+    local netplan_action=""
+    local old_ps3="$PS3"
+    PS3="Enter choice [1-${#action_options[@]}]: "
+    select _action in "${action_options[@]}"; do
+        if [[ -n "$_action" ]]; then
+            netplan_action="$_action"
+            break
+        else
+            echo "Invalid selection. Try again."
+        fi
+    done
+    PS3="$old_ps3"
+
+    if [[ "$netplan_action" == "remove-config" ]]; then
+        remove_network_config "${EXISTING[@]}"
+        return
     fi
 
     # Compute missing interfaces (present on system but not in netplan)
